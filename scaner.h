@@ -34,7 +34,7 @@
 #define Ocin          29  // >>
 #define vetsirovno    30  // >=
 #define nasobeni      31  // *
-#define dělení        32  // /
+#define delení        32  // /
 
 //jednotlive znaky
 
