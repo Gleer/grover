@@ -63,6 +63,17 @@
 
 #define END_OF_FILE   47
 
+// struktura samotneho tokenu
+//---------------------------
+
+typedef struct
+  {
+    ID_tokenu typ;
+    int cislo;            // pokud je potreba ulozit cele cislo
+    double desetine;      // pokud je potreba ulozit desetine cislo
+    char* data;           // pokud je potreba ulozit retezec
+  } token;
+
 //hlavicka funkce simulujici lexikalni analyzator
 void setSourceFile(FILE *f);
 int getNextToken(string *attr);
