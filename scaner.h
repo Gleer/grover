@@ -9,20 +9,20 @@
 
 typedef enum
   {
-    LEX_ERROR,          // 0
+    LEX_ERROR,           // 0
       //klicova slova
-    Kauto,              // 1   auto
-    Kcin,               // 2   cin
-    Kcout,              // 3   cout
-    Kdouble,            // 4   double
-    Kelse,              // 5   else
-    Kfor,               // 6   for
-    Kif,                // 7   if
-    Kint,               // 8   int
-    Kreturn,            // 9   return
-    Kstring,            // 10  string              
+    Kauto,               // 1   auto
+    Kcin,                // 2   cin
+    Kcout,               // 3   cout
+    Kdouble,             // 4   double
+    Kelse,               // 5   else
+    Kfor,                // 6   for
+    Kif,                 // 7   if
+    Kint,                // 8   int
+    Kreturn,             // 9   return
+    Kstring,             // 10  string              
       //operatory 
-    plus,         // 11  +
+    plus,                // 11  +
     minus,               // 12  -
     mensi,               // 13  <
     Ocout,               // 14  <<
