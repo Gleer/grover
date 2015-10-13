@@ -1,471 +1,282 @@
-/*
- * Projekt: IFJ05
- * Resitele: xbarin02, xdudka00, xfilak01, xhefka00, xhradi08
- *
- * Soubor: parser.c - Syntakticky analyzator a generator kodu
- * Autor: Kamil Dudka, xdudka00
- */
-
-#define INIT_TAPE_SIZE		256	// Pocatecni velikost pasky (pocet pseudoinstrukci)
-
-#include "ifj05.h"
-#include "scanner.h"
-#include "symbols.h"
-#include "variables.h"
-#include "parser.h"
-#include "expr.h"
-#include "tape.h"
-#include "runtime.h"
-
-#include <ctype.h>
-#include <stdarg.h>
-#include <stdbool.h>
 #include <stdio.h>
-#include <stdlib.h>
+#include "str.h"
+#include "stable.h"
+#include "ilist.h"
+#include "scaner.h"
+#include "parser.h"
 
-static char szErrString[] =		"Invalid string";
-static char szErrEscape[] =		"Invalid escape sequence";
-static char szErrChar[] =		"Invalid char in input";
-static char szErrExcl[] =		"'=' expected after '!'";
-static char szErrColon[] =		"':' or '=' expected after ':'";
-static char szErrFloat[] =		"Invalid format of float";
-static char szErrInt[] =		"Invalid format of integer";
-static char szErrLabelRedefinition[] =	"Redefinition of label \"%s\"";
-static char szErrSyntax[] =		"Syntax error";
-static char szErrStatement[] =		"Unknown statement";
-static char szErrSemicolon[] =		"Semicolon expected";
-static char szErrNoId[] =		"Identifier expected";
-static char szErrNoLabel[] =		"Label expected";
-static char szErrEOF[] =		"Unexpected end of file";
 
-/*
- * Generuje navesti (zapis do tabulky symbolu)
- */
-static inline void GenLabel (PParserData pPData, void *id) {
-	dprintf ("@%s::\n", SymbolsGetName (id));
-	if (0== SymbolsSetLabel (id, TapeGetNextIndex (pPData->pTape)))
-		// Ok..
-		return;
+tSymbolTable *table;// globalni promenna uchovavajici tabulku symbolu
+tListOfInstr *list; // globalni promenna uchovavajici seznam instrukci
+int token;          // globalni promenna, ve ktere bude ulozen aktualni token
+string attr;        // globalni promenna, ve ktere bude ulozen atribut tokenu
 
-	// Label redefinition (semantic error)
-	bool bSkipErr = pPData -> bSkipErr;
-	ParseError (pPData, szErrLabelRedefinition, SymbolsGetName (id));
+int counterVar = 1;
 
-	// Semantic error is not parser error
-	pPData -> bSkipErr = bSkipErr;
+void generateVariable(string *var)
+// generuje jedinecne nazvy identifikatoru
+// nazev se sklada ze znaku $ nasledovanym cislem
+// postupne se tu generuji prirozena cisla a do nazvu promenne se ukladaji
+// v reverzovanem poradi - na funkcnost to nema vliv, ale je jednodussi implementace
+
+{
+  strClear(var);
+  strAddChar(var, '$');
+  int i;
+  i = counterVar;
+  while (i != 0)
+  {
+    strAddChar(var, (char)(i % 10 + '0'));
+    i = i / 10;
+  }
+  counterVar ++;
+} 
+
+void generateInstruction(int instType, void *addr1, void *addr2, void *addr3)
+// vlozi novou instrukci do seznamu instrukci
+{
+   tInstr I;
+   I.instType = instType;
+   I.addr1 = addr1;
+   I.addr2 = addr2;
+   I.addr3 = addr3;
+   listInsertLast(list, I);
 }
 
-/*
- * Konecny automat parsujici zdrojovy soubor
- */
-static int MainFA (PParserData);
+// ==================================================================
+// jednotlive funkce odpovidajici jednotlivym nonterminalum gramatiky
+// ==================================================================
 
-/*
- * Obsluha syntakticke chyby
- * 1. parametr - ukazatel na lokalni data parseru
- * 2. parametr - chybova hlaska bez "\n"
- */
-void ParseError (PParserData pPData, ...) {
-	// Zacatek funkce s promennym poctem parametru
-	va_list pArgs;
-	va_start (pArgs, pPData);
+int stat(); // deklarace funkce, nebot bude volana drive, nez je definovana
 
-	// Nebude se generovat kod
-	pPData-> bErrCompile = true;
-	
-	if (pPData-> bSkipErr)
-		// Preskakuju chyby nez narazim na ';' (rizeno hlavnim FA)
-		return;
-	pPData-> bSkipErr  = true;
 
-	// Vypis chybove hlasky
-	GlobalErr ("%s:%d: error: ", pPData->srcFileName, pPData->token.line +1);
-	
-	// Vypis variabilni chybove hlasky
-	const char *fmt = va_arg (pArgs, const char *);
-	GlobalErrV (fmt, pArgs);
-	
-	// Odradkuje
-	GlobalErr ("\n");
+int declrList()
+{
+  switch (token)
+  {
+    case ID:
+      // pravidlo <declrList> -> "ID" ";" <declrList>
 
-	// Konec funkce s promennym poctem parametru
-	va_end (pArgs);
+      // resime ID, ulozime do tabulky symbolu
+      // pokud tento ID jiz byl deklarovan, jedna se o semantickou chybu
+      if (tableInsert(table, &attr, TYPE_INT) == 1) return SEM_ERROR;
+      
+      // pozadame o dalsi token, kterym musi byt ";"
+      if ((token = getNextToken(&attr)) == LEX_ERROR) return LEX_ERROR;
+      if (token != SEMICOLON) return SYNTAX_ERROR;
+      
+      // pozadame o dalsi token a rekurzivne zavolame funkci declrList
+      // cele pravidlo probehne v poradku, pokud nam tato funkce vrati uspech
+      if ((token = getNextToken(&attr)) == LEX_ERROR) return LEX_ERROR;
+      return declrList();    
+    break;
+      
+
+    case LEFT_VINCULUM:
+      // pravidlo <declrList> -> "{"  
+ 
+      // pouze pozadame o dalsi token a vratime uspech
+      if ((token = getNextToken(&attr)) == LEX_ERROR) return LEX_ERROR;	    
+      return SYNTAX_OK;
+    break;
+  }
+  // pokud aktualni token je jiny nez vyse uvedene, jedna se o syntaktickou chybu
+  return SYNTAX_ERROR;
 }
 
-static inline void TokenCharErr (PParserData pPData) {
-	// Nebude se generovat kod
-	pPData-> bErrCompile = true;
-	
-	if (pPData-> bSkipErr)
-		// Preskakuju chyby nez narazim na ';' (rizeno hlavnim FA)
-		return;
-	pPData-> bSkipErr  = true;
+int statList()
+{
+  int result;
+  switch (token)
+  {
+    case RIGHT_VINCULUM:
+      // pravidlo <statList> -> "}"
 
-	// Vypis chybove hlasky
-	GlobalErr ("%s:%d: error: ", pPData->srcFileName, pPData->token.line +1);
-	
-	// Vypis znaku ktery chybu zpusobil
-	const int iChar = *(int *)(pPData->token.pData);
-	if (EOF== iChar)
-		GlobalErr ("EOF - ");
+      // pouze pozadame o dalsi token a vratime uspech
+      if ((token = getNextToken(&attr)) == LEX_ERROR) return LEX_ERROR;
+      return SYNTAX_OK;
+    break;    
 
-	else if (isalpha (iChar) || isdigit (iChar))
-		GlobalErr ("'%c' - ", iChar);
-
-	else
-		GlobalErr ("0x%X - ", iChar);
-
-	// Vypis vlastni chybove hlasky
-	switch (pPData->token.tType) {
-		case tInvalidString:
-			GlobalErr (szErrString);
-			break;
-			
-		case tInvalidEscape:
-			GlobalErr (szErrEscape);			
-			break;
-
-		case tInvalidChar:
-			GlobalErr (szErrChar);
-			break;
-
-		default:
-			break;
-	}
-	
-	// Odradkuje
-	GlobalErr ("\n");
+    case WHILE:
+    case READ:
+    case WRITE:
+    case SETZERO:
+    case INC:
+    case DEC:
+      // pravidlo <statList> -> <stat> <statList>
+      
+      // nejprve zavolame funkci stat
+      result = stat();
+      // pokud v ramci teto funkce nastala chyba, vracime jeji kod a nepokracujeme dal
+      if (result != SYNTAX_OK) return result;
+      // pokud probehlo vse v poradku, hlasime vysledek, ktery dostaneme od funkce statList
+      return statList();
+  }
+  // pokud aktualni token je jiny nez vyse uvedene, jedna se o syntaktickou chybu
+  return SYNTAX_ERROR;
 }
 
 
-/*
- * Nacte dalsi token
- *   - vola funkci z modulu "scanner"
- *   - sam obslouzi lexikalni chybu
- * 1. parametr - ukazatel na lokalni data parseru
- */
-int ParserGetNextToken (PParserData pPData) {
-	ScannerGetNextToken (pPData->pScan, &(pPData->token));
-	switch (pPData->token.tType) {	
-		case tInvalidString:
-		case tInvalidEscape:
-		case tInvalidChar:
-			TokenCharErr (pPData);
-			return 1;
+int stat()
+{
+  tData *variableInfo;
 
-		case tInvalidExcl:
-			ParseError (pPData, szErrExcl);
-			return 1;
+  int result;
+  int firstTermInRule;
 
-		case tInvalidColon:
-			ParseError (pPData, szErrColon);
-			return 1;
+  switch (token)
+  {
+    case READ:
+    case WRITE:
+    case SETZERO:
+    case INC:
+    case DEC:
+      // tato pravidla maji stejny kontext, budeme je zpracovavat zaroven,
+      // akorat vygenerujeme prislusnou instrukci
+    
+      // pravidlo <stat> -> "READ" "ID" ";"
+      // pravidlo <stat> -> "WRITE" "ID" ";"
+      // pravidlo <stat> -> "SETZERO" "ID" ";"
+      // pravidlo <stat> -> "INC" "ID" ";"
+      // pravidlo <stat> -> "DEC" "ID" ";"
+      
+      firstTermInRule = token;  // musime si ulozit tento token, abychom na zaver vedeli, jakou instrukci generovat
+      
+      // pozadame o dalsi token, kterym musi byt ID
+      if ((token = getNextToken(&attr)) == LEX_ERROR) return LEX_ERROR;
+      // pokud token neni ID, jedna se o syntaktickou chybu
+      if (token != ID) return SYNTAX_ERROR;
+      // musime zkontrolovat, zda je jiz identifikator v tabulce symbolu
+      // pokud ne, jedna se o semantickou chybu
+      if ((variableInfo = tableSearch(table, &attr)) == NULL) return SEM_ERROR;      
+      // nagenerujeme patricnou instrukci
+      switch (firstTermInRule)
+      {
+        case READ:    generateInstruction(I_READ,    (void*) variableInfo, NULL, NULL); break;
+        case WRITE:   generateInstruction(I_WRITE,   (void*) variableInfo, NULL, NULL); break;
+        case SETZERO: generateInstruction(I_SETZERO, (void*) variableInfo, NULL, NULL); break;
+        case INC:     generateInstruction(I_INC,     (void*) variableInfo, NULL, NULL); break;
+        case DEC:     generateInstruction(I_DEC,     (void*) variableInfo, NULL, NULL); break;
+      }
+      
+      // pozadame o dalsi token, kterym musi byt strednik
+      if ((token = getNextToken(&attr)) == LEX_ERROR) return LEX_ERROR;
+      if (token != SEMICOLON) return SYNTAX_ERROR;
+      
+      // pozadame o dalsi token a vratime uspech
+      if ((token = getNextToken(&attr)) == LEX_ERROR) return LEX_ERROR;
+      return SYNTAX_OK;
+    break;	 
+        
+    case WHILE:
+      // pravidlo <stat> -> "WHILE" "ID" "{" <statList>
+      
+      // nagenerujeme instrukci noveho navesti a uchovame jeji ukazatel
+      generateInstruction(I_LAB, NULL, NULL, NULL);
+      void *addrOfLab1;
+      addrOfLab1 = listGetPointerLast(list);
+      
+      // pozadame o dalsi token, kterym musi byt ID
+      if ((token = getNextToken(&attr)) == LEX_ERROR) return LEX_ERROR;
+      // pokud token neni ID, jedna se o syntaktickou chybu
+      if (token != ID) return SYNTAX_ERROR;
+      // musime zkontrolovat, zda je jiz identifikator v tabulce symbolu
+      // pokud ne, jedna se o semantickou chybu
+      if ((variableInfo = tableSearch(table, &attr)) == NULL) return SEM_ERROR;      
+      
+      // nagenerujeme pomocnou promennou, kterou ulozime do tabulky symbolu
+      // testovat jeji existenci nemusime, nebot jeji nazev je jedinecny
+      string newVar;
+      strInit(&newVar);
+      generateVariable(&newVar);
+      tableInsert(table, &newVar, TYPE_INT);
+      tData *newVariableInfo;
+      newVariableInfo = tableSearch(table, &newVar);
+      strFree(&newVar);
+      
+      // nagenerujeme instrukci, ktera provede negaci drive ziskaneho identifikatoru
+      // a vysledek ulozi do nove promenne      
+      generateInstruction(I_NOT, (void*) variableInfo, NULL, (void*) newVariableInfo);
+      
+      // nagenerujeme instrukci podmineneho skoku a ulozime jeji adresu,
+      // protoze pozdeji bude potreba doplnit adresu skoku
+      void *addrOfIfGoto;
+      generateInstruction(I_IFGOTO, (void*) newVariableInfo, NULL, NULL); 
+      addrOfIfGoto = listGetPointerLast(list);
+      
+      // zazadame o dalsi token, kterym musi byt slozena zavorka
+      if ((token = getNextToken(&attr)) == LEX_ERROR) return LEX_ERROR;
+      if (token != LEFT_VINCULUM) return SYNTAX_ERROR;
+      
+      // zazadame o dalsi token a rekurzivne zavolame funkci stat
+      if ((token = getNextToken(&attr)) == LEX_ERROR) return LEX_ERROR;
+      result = statList();
+      if (result != SYNTAX_OK) return result;
+      
+      // nagenerujeme instrukci skoku
+      generateInstruction(I_GOTO, NULL, NULL, (void*) addrOfLab1);
 
-		case tInvalidSign:
-		case tInvalidExp:
-		case tInvalidFloat:
-			ParseError (pPData, szErrFloat);
-			return 1;
+      // nagenerujeme instrukci druheho navesti
+      generateInstruction(I_LAB, NULL, NULL, NULL);
+      void *addrOfLab2;
+      addrOfLab2 = listGetPointerLast(list);
 
-		case tInvalidInt:
-			ParseError (pPData, szErrInt);
-			return 1;
-			
-		default:
-			return 0;
-	}
+      // jiz zname adresu druheho navesti, muzeme tedy nastavit adresu
+      // do drive generovane instrukce podmineneho skoku
+      listGoto(list, addrOfIfGoto);
+      tInstr *data;
+      data = listGetData(list);
+      data->addr3 = addrOfLab2;
+      
+      return SYNTAX_OK;
+    break;
+    
+  }
+  // pokud aktualni token je jiny nez vyse uvedene, jedna se o syntaktickou chybu
+  return SYNTAX_ERROR;      
+}    
+    
+    
+int program()
+{
+  int result;
+  switch (token)
+  {
+    case ID:
+    case LEFT_VINCULUM:    
+      // pravidlo <program> -> <declrList> <statList> <END_OF_FILE>
+      result = declrList();
+      if (result != SYNTAX_OK) return result;
+      result = statList();
+      if (result != SYNTAX_OK) return result;
+      
+      // POZOR! Nezapomenout testovat, zda nasleduje konec souboru.
+      // Pri oponenuti teto veci by zde mohly pokracovat nejake nesmysly, ktere by se
+      // v ramci syntakticke analyzy jiz nezpracovavaly a program by se tvaril, ze je OK
+      if (token != END_OF_FILE) return SYNTAX_ERROR;
+      
+      // nagenerujeme instrukci konce programu
+      generateInstruction(I_STOP, NULL, NULL, NULL);
+      
+      return SYNTAX_OK;
+    break;
+  }
+  // pokud aktualni token je jiny nez vyse uvedene, jedna se o syntaktickou chybu
+  return SYNTAX_ERROR;
 }
 
-/*
- * Vstupni bod Parseru - odstartuje syntaxi rizeny preklad a interpretaci kodu
- * 1. parametr - ukazatel na otevreny zdrojovy soubor (moznost presmerovani)
- * 2. parametr - jmeno zdrojoveho souboru - muze byt obsazeno v chybovych hlaskach
- * Vraci kod chyby (nula znamena vsechno OK)
- */
-int ParserInvoke (FILE *hFile, const char *srcFileName) {
-	// Lokalni data Parseru
-	TParserData parserData;
-		parserData.srcFileName= srcFileName,
-		parserData.bErrCompile= false;
-		parserData.bSkipErr = false;
-	
-	// Inicializace Scanneru
-	if (NULL== (parserData.pScan = ScannerInit (hFile) ))
-		GlobalErrAlloc ();
 
-	// Inicializace Pasky (pro ukladani pseudokodu)
-	if (NULL== (parserData.pTape = TapeCreate (INIT_TAPE_SIZE)))
-		GlobalErrAlloc ();
-
-	// Odstartuji syntaktickou analyzu
-	dprintf ("Analysing source code:\n");
-	int iErr = MainFA (&parserData);
-
-	// Go!
-	if (0==iErr) {
-		dprintf ("\nSource ok, starting execution..\n");
-		iErr = RuntimeProcess (parserData.pTape, srcFileName);
-	}
-       
-#ifndef NDEBUG
-	else
-		dprintf ("One or more parse errors detected..\n");
-
-	if (0==iErr)
-		dprintf ("Normal program exit..\n");
-#endif
-
-	dprintf ("Destruction of tape..\n");
-	TapeDestroy (parserData.pTape);
-	
-	dprintf ("Destruction of scanner..\n");
-	ScannerDestroy (parserData.pScan);
-	
-	dprintf ("Thank you for using IFJ05..\n");
-	return iErr;
+int parse(tSymbolTable *ST, tListOfInstr *instrList)
+{
+  int result;
+  table = ST;
+  list = instrList;
+  strInit(&attr);
+  if ((token = getNextToken(&attr)) == LEX_ERROR)
+     // nastala chyba jiz pri nacteni prvniho lexemu
+     result = LEX_ERROR;
+  else
+     result = program();
+  strFree(&attr);
+  return result;
 }
-
-/*
- * Zapise pseudoinstrukci na vystupni pasku
- * 1. parametr - odkaz na lokalni data parseru
- * 2. parametr - kod instrukce, ktera se ma vlozit
- * 3. parametr - ukazatel predany jako operand psudoinstrukce
- */
-void Generate (PParserData pPData, TInstruction eInst, void *id) {
-#ifndef NDEBUG
-	switch (eInst) {
-		case inPUSHV:
-			dprintf ("  push from     %s\n", SymbolsGetName (id) );
-			break;
-		case inPUSHC:
-			dprintf ("  push          "); ConstantPrint (id); dprintf ("\n");
-			break;
-		case inPOPV:
-			dprintf ("  pop to        %s\n", SymbolsGetName (id) );
-			break;
-		case inREADV:
-			dprintf ("  read          %s\n", SymbolsGetName (id) );
-			break;
-		case inPRINTV:
-			dprintf ("  print         %s\n", SymbolsGetName (id) );
-			break;
-		case inJMPV:
-			dprintf ("  jmp           @%s\n", SymbolsGetName (id) );
-			break;
-		case inJNZV:
-			dprintf ("  jnz           @%s\n", SymbolsGetName (id) );
-			break;
-		case inCMPE:
-			dprintf ("  cmp_e\n");
-			break;
-		case inCMPNE:
-			dprintf ("  cmp_ne\n");
-			break;
-		case inCMPL:
-			dprintf ("  cmp_l\n");
-			break;
-		case inCMPG:
-			dprintf ("  cmp_g\n");
-			break;
-		case inCMPLE:
-			dprintf ("  cmp_le\n");
-			break;
-		case inCMPGE:
-			dprintf ("  cmp_ge\n");
-			break;
-		case inADD:
-			dprintf ("  add\n");
-			break;
-		case inSUB:
-			dprintf ("  sub\n");
-			break;
-		case inMUL:
-			dprintf ("  mul\n");
-			break;
-		case inDIV:
-			dprintf ("  div\n");
-			break;
-		default:
-			GlobalErr ("Internal error: Invalid instruction\n");
-			
-	} // switch (eInst)
-#endif
-	TInstBlock inst;
-
-	inst.Inst = eInst;
-	inst.Params.pointer = id;
-	inst.line_no = pPData->token.line;
-
-	TapeAddInst (pPData->pTape, &inst);
-}
-
-/*
- * Hlavni FA syntaktickeho analyzatoru
- * Provadi syntaxi rizeny preklad
- *
- * 1. parametr - ukazatel na otevreny zdrojovy soubor (moznost presmerovani)
- * 2. parametr - jmeno zdrojoveho souboru - muze byt obsazeno v chybovych hlaskach
- * vraci: kod chyby (nula znamena vsechno OK)
- */
-static int MainFA (PParserData pPData) {
-	// Mnozina stavu FA, pocatecni stav je init
-	enum TState {
-		stInit,
-		stIdReaded,
-		stAssignReaded,
-		stReadReaded,
-		stPrintReaded,
-		stGotoReaded,
-		stOnReaded,
-		stOnGotoReaded,
-		stStatementReaded,
-		stReadNext,
-	} state = stInit;
-
-	// Vlastni cyklus FA
-	void *id = NULL;
-	while (1) {
-		ParserGetNextToken (pPData);
-		switch (state) {
-			case stReadNext:
-				if (tEOF == pPData->token.tType)
-					// Konec souboru - vsechno ok?
-					return pPData->bErrCompile;
-
-			case stInit:
-				switch (pPData->token.tType) {
-					case tIdentifier:
-						id = pPData->token.pData;
-						state = stIdReaded;
-						break;
-						
-					case tKeyRead:
-						state = stReadReaded;
-						break;
-						
-					case tKeyPrint:
-						state = stPrintReaded;
-						break;
-						
-					case tKeyGoTo:
-						state = stGotoReaded;
-						break;
-						
-					case tKeyOn:
-						state = stOnReaded;
-						break;
-						
-					default:
-						state = stStatementReaded;
-						ParseError (pPData, szErrStatement);
-				}
-				break; // (stInit)
-				
-			case stIdReaded:
-				switch (pPData->token.tType) {
-					case tAssignment:
-						state = stAssignReaded;
-						break;
-
-					case tLabel:
-						state = stReadNext;
-						GenLabel (pPData, id);
-						break;
-
-					default:
-						state = stStatementReaded;
-						ParseError (pPData, szErrSyntax);
-				}
-				break; // (stIdReaded)
-				
-			case stReadReaded:
-				state = stStatementReaded;
-				if (tIdentifier == pPData->token.tType)
-					Generate (pPData, inREADV, pPData->token.pData);
-				else
-					// Za Read neni identifikator
-					ParseError (pPData, szErrNoId);
-
-				break;	// (stReadReaded)
-								
-			case stPrintReaded:
-				state = stStatementReaded;
-				
-				if (tIdentifier == pPData->token.tType)
-					Generate (pPData, inPRINTV, pPData->token.pData);
-				else
-					// Za Print neni identifikator
-					ParseError (pPData, szErrNoId);
-
-				break;	// (stPrintReaded)
-				
-			case stGotoReaded:
-				state = stStatementReaded;
-
-				if (tIdentifier == pPData->token.tType)
-					Generate (pPData, inJMPV, pPData->token.pData);
-				else
-					// Za go_to neni identifikator
-					ParseError (pPData, szErrNoLabel);
-
-				break;	// (stGotoReaded)
-				
-			case stOnReaded:
-				if (!ExprParse (pPData) && tKeyGoTo==pPData->token.tType)
-					// Preskoci i klicove slovo go_to, ktere bylo nacteno behem PA
-					state = stOnGotoReaded;
-				else
-					// Chyba ve vyrazu
-					state = stStatementReaded;
-
-				break;	// (stOnReaded)
-				
-			case stOnGotoReaded:
-				state = stStatementReaded;
-
-				if (tIdentifier == pPData->token.tType)
-					Generate (pPData, inJNZV, pPData->token.pData);
-				else
-					// Za go_to neni identifikator
-					ParseError (pPData, szErrNoLabel);
-
-				break;	// (stOnGotoReaded)
-				
-			case stAssignReaded:
-				// Zpracovani hodnoty na prave strane
-				if (!ExprParse (pPData) && tSemicolon==pPData->token.tType) {
-					// Preskoci i strednik, ktery byl nacten behem PA
-					state = stReadNext;
-					Generate (pPData, inPOPV, id);
-					
-					break; // (stAssignReaded)
-				}
-
-				// Chyba ve vyrazu
-				state = stStatementReaded;
-				
-			case stStatementReaded:
-				switch (pPData->token.tType) {
-					case tSemicolon:
-						state = stReadNext;
-
-						// Zastavit preskakovani spatnych prikazu
-						pPData-> bSkipErr = false;
-						break;
-
-					case tEOF:
-						ParseError (pPData, szErrEOF);
-						return 1;
-
-					default:
-						ParseError (pPData, szErrSemicolon);
-				}
-
-				break;	// (stStatementReaded)
-				
-		} // switch (state)
-
-	} // while (1)
-	return 0;
-}
-
