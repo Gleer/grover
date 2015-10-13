@@ -30,7 +30,7 @@ typedef enum
     prirad,              // 16  =
     rovno,               // 17  ==
     nerovno,             // 18  !=
-    vetsi,              // 19  >
+    vetsi,               // 19  >
     Ocin,                // 20  >>
     vetsirovno,          // 21  >=
     nasobeni,            // 22  *
