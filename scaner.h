@@ -1,67 +1,60 @@
 // ---------------------------------
+// IFJ 2015
+//
 // knihovna pro lexikální analyzátor
 // ---------------------------------
 // Autor: xklhuf00
 
 //chyba lexikálního analyzátoru
 
-#define LEX_ERROR    -1
-
-//klicova slova
-
-#define Kauto         10  // auto
-#define Kcin          11  // cin
-#define Kcout         12  // cout
-#define Kdouble       13  // double
-#define Kelse         14  // else
-#define Kfor          15  // for
-#define Kif           16  // if
-#define Kint          17  // int
-#define Kreturn       18  // return
-#define Kstring       19  // string
-                        
-//operatory 
-
-#define plus          20  // +
-#define minus         21  // -
-#define mensi         22  // <
-#define Ocout         23  // <<
-#define mensirovno    24  // <=
-#define prirad        25  // =
-#define rovno         26  // ==
-#define nerovno       27  // !=
-#define vestsi        28  // >
-#define Ocin          29  // >>
-#define vetsirovno    30  // >=
-#define nasobeni      31  // *
-#define delení        32  // /
-
-//jednotlive znaky
-
-#define Lzavorka      33  // (
-#define Pzavorka      34  // )
-#define Lslozena      35  // {
-#define Pslozena      36  // }
-#define carka         37  // ,
-#define strednik      38  // ;
-#define radkovyKom    39  // //
-#define Zkomentar     40  // /*
-#define Kkomentar     41  // */
-
-// identifikatory
-
-#define celecislo     42  // int    - cele cislo
-#define desetine      43  // double - desetinne cislo
-#define retezec       44  // string - retezec znaku ""
-#define id            45  // identifikator 
-
-// chyba 
-
-#define Typ_CHYBA     46  // posilame v pripade chyby (pri spatne alokaci)
-
-//specialni znaky
-
-#define END_OF_FILE   47
+typedef enum
+  {
+    LEX_ERROR,          // 0
+      //klicova slova
+    Kauto,              // 1   auto
+    Kcin,               // 2   cin
+    Kcout,              // 3   cout
+    Kdouble,            // 4   double
+    Kelse,              // 5   else
+    Kfor,               // 6   for
+    Kif,                // 7   if
+    Kint,               // 8   int
+    Kreturn,            // 9   return
+    Kstring,            // 10  string              
+      //operatory 
+    plus,         // 11  +
+    minus,               // 12  -
+    mensi,               // 13  <
+    Ocout,               // 14  <<
+    mensirovno,          // 15  <=
+    prirad,              // 16  =
+    rovno,               // 17  ==
+    nerovno,             // 18  !=
+    vestsi,              // 19  >
+    Ocin,                // 20  >>
+    vetsirovno,          // 21  >=
+    nasobeni,            // 22  *
+    deleni,              // 23  /
+      //jednotlive znaky
+    Lzavorka,            // 24  (
+    Pzavorka,            // 25  )
+    Lslozena,            // 26  {
+    Pslozena,            // 27  }
+    carka,               // 28  ,
+    strednik,            // 29  ;
+    radkovyKom,          // 30  //
+    Zkomenta,            // 31  /*
+    Kkomentar,           // 32  */
+      // identifikatory
+    celecislo,           // 33  int    - cele cislo
+    desetine,            // 34  double - desetinne cislo
+    retezec,             // 35  string - retezec znaku ""
+    id,                  // 36  identifikator 
+      // chyba 
+    Typ_CHYBA,           // 37  posilame v pripade chyby (pri spatne alokaci)
+      //specialni znaky
+    END_OF_FILE         // 38  
+  } ID_tokenu; 
 
 // struktura samotneho tokenu
 //---------------------------
@@ -75,5 +68,4 @@ typedef struct
   } token;
 
 //hlavicka funkce simulujici lexikalni analyzator
-void setSourceFile(FILE *f);
-int getNextToken(string *attr);
+token getNextToken();
