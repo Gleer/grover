@@ -9,7 +9,7 @@
 
 typedef enum
   {
-    LEX_ERROR,           // 0
+    LEX_ERROR = 0,       // 0
       //klicova slova
     Kauto,               // 1   auto
     Kcin,                // 2   cin
@@ -22,15 +22,15 @@ typedef enum
     Kreturn,             // 9   return
     Kstring,             // 10  string              
       //operatory 
-    plus,                // 11  +
-    minus,               // 12  -
+    minus,               // 11  -
+    plus,                // 12  +  
     mensi,               // 13  <
     Ocout,               // 14  <<
     mensirovno,          // 15  <=
     prirad,              // 16  =
     rovno,               // 17  ==
     nerovno,             // 18  !=
-    vestsi,              // 19  >
+    vetsi,              // 19  >
     Ocin,                // 20  >>
     vetsirovno,          // 21  >=
     nasobeni,            // 22  *
@@ -51,9 +51,9 @@ typedef enum
     retezec,             // 35  string - retezec znaku ""
     id,                  // 36  identifikator 
       // chyba 
-    Typ_CHYBA,           // 37  posilame v pripade chyby (pri spatne alokaci)
+    TypChyba,            // 37  posilame v pripade chyby (pri spatne alokaci)
       //specialni znaky
-    END_OF_FILE         // 38  
+    END_OF_FILE          // 38  
   } ID_tokenu; 
 
 // struktura samotneho tokenu
