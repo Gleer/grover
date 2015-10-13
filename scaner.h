@@ -55,7 +55,7 @@
 #define retezec       44  // string - retezec znaku ""
 #define id            45  // identifikator 
 
-// chyba 46
+// chyba 
 
 #define Typ_CHYBA     46  // posilame v pripade chyby (pri spatne alokaci)
 
