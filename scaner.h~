@@ -3,7 +3,7 @@
 // ---------------------------------
 // Autor: xklhuf00
 
-//chyba lexikálního analyzátoru
+//chybove hlasky
 
 #define LEX_ERROR    -1
 

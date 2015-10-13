@@ -63,54 +63,59 @@ int getNextToken(string *attr)
 	                            if (c == EOF) return END_OF_FILE;
 	                            else
 	                              return LEX_ERROR;
-            break;
+       break;
+	 
 
-            case 1:
-              // komentar
-              if (c == '>') state = 0; 
-              else 
-                // komentar pokracuje libovolnymi znaky, zustan ve stavu 1,
-                // ale kontroluj, zda neprijde EOF (neukonceny komentar)
-              if (c == EOF) return LEX_ERROR;
-            break;
+       case 1:
+       // komentar
+         if (c == '>') state = 0; 
+         else 
+         // komentar pokracuje libovolnymi znaky, zustan ve stavu 1,
+         // ale kontroluj, zda neprijde EOF (neukonceny komentar)
+         if (c == EOF) return LEX_ERROR;
+       break;
        
-            case 2:
-              // identifikator nebo klicove slovo
-              if (isalnum(c))
-	              // identifikator pokracuje
-	              strAddChar(attr, c);
-	            else
-	              // konec identifikatoru
-	              {
-       	          ungetc(c, source); // POZOR! Je potreba vratit posledni nacteny znak
-            	    // kontrola, zda se nejedna o klicove slovo
-	                if (strCmpConstStr(attr, "setzero") == 0) return SETZERO;
-	                else 
-	                  if (strCmpConstStr(attr, "read") == 0) return READ;
-	                  else 
-	                    if (strCmpConstStr(attr, "write") == 0) return WRITE;
-                	    else 
-	                      if (strCmpConstStr(attr, "while") == 0) return WHILE;
-	                      else 
-                    	    // jednalo se skutecne o identifikator
-	                      return ID;
-                }
-            break;   
        
-            case 3:
-              // pokracovani operatoru ++
-              if (c == '+') return INC;
-              else
-                return LEX_ERROR;
-            break;
-          
-            case 4:
-              // pokracovani operatoru --
-              if (c == '-') return DEC;
-              else
-                return LEX_ERROR;
-            break;
-                 
+       case 2:
+       // identifikator nebo klicove slovo
+         if (isalnum(c))
+	 // identifikator pokracuje
+	    strAddChar(attr, c);
+	 else
+	 // konec identifikatoru
+	 {
+       	    ungetc(c, source); // POZOR! Je potreba vratit posledni nacteny znak
+	    
+	    // kontrola, zda se nejedna o klicove slovo
+	    if (strCmpConstStr(attr, "setzero") == 0) return SETZERO;
+	    else 
+	    if (strCmpConstStr(attr, "read") == 0) return READ;
+	    else 
+	    if (strCmpConstStr(attr, "write") == 0) return WRITE;
+	    else 
+	    if (strCmpConstStr(attr, "while") == 0) return WHILE;
+	    else 
+	    // jednalo se skutecne o identifikator
+	       return ID;
           }
-      }
+       break;   
+       
+
+       case 3:
+       // pokracovani operatoru ++
+         if (c == '+') return INC;
+         else
+         return LEX_ERROR;
+       break;
+       
+       
+       case 4:
+       // pokracovani operatoru --
+         if (c == '-') return DEC;
+         else
+         return LEX_ERROR;
+       break;
+       
+    }
   }
+}
