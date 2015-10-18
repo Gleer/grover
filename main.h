@@ -1,4 +1,4 @@
-FILE *vstup;
+FILE* vstup;
 
 enum {
   ERR_CODE_SUCC=0,	//Program proběhl správně
